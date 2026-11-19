@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Surveillance du focus de la fenêtre</title>
+  <meta name="description" content="Page de démonstration qui signale la perte de focus ou la mise en arrière-plan de la fenêtre du navigateur.">
+
+  <style>
+    /* =========================================================
+       1. VARIABLES DE THÈME
+       ========================================================= */
+    :root {
+      --bg: #f4f6f9;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --ok: #16a34a;
+      --ok-soft: #dcfce7;
+      --warn: #dc2626;
+      --warn-soft: #fef2f2;
+      --warn-border: #f97316;
+      --radius: 14px;
+      --shadow: 0 10px 30px rgba(17, 24, 39, 0.08);
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* =========================================================
+       2. EN-TÊTE
+       ========================================================= */
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    header h1 { font-size: 1.1rem; font-weight: 650; }
+
+    /* Indicateur visuel de l'état (pastille + libellé) */
+    .indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: var(--ok-soft);
+      color: var(--ok);
+      transition: background 0.3s, color 0.3s;
+    }
+    .indicator .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 0 0 currentColor;
+      animation: pulse 2s infinite;
+    }
+    .indicator.away { background: var(--warn-soft); color: var(--warn); }
+
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.45); }
+      70%  { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0); }
+    }
+
+    /* =========================================================
+       3. CONTENU PRINCIPAL
+       ========================================================= */
+    main {
+      flex: 1;
+      width: 100%;
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 32px 20px;
+      display: grid;
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+
+    /* Message d'état principal */
+    #status {
+      text-align: center;
+      font-size: 1.35rem;
+      font-weight: 650;
+      padding: 36px 20px;
+      border-left: 6px solid var(--ok);
+      transition: border-color 0.3s;
+    }
+    #status.away { border-left-color: var(--warn); color: var(--warn); }
+
+    /* Statistiques */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+    }
+    .stat {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+    .stat .value { font-size: 1.6rem; font-weight: 700; }
+    .stat .label { font-size: 0.8rem; color: var(--muted); }
+
+    /* Journal des événements */
+    h2 { font-size: 1rem; margin-bottom: 12px; }
+    #log {
+      list-style: none;
+      max-height: 220px;
+      overflow-y: auto;
+      font-size: 0.88rem;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    #log li {
+      padding: 6px 0;
+      border-bottom: 1px dashed var(--border);
+      color: var(--muted);
+    }
+    #log li:last-child { border-bottom: none; }
+    #log li strong { color: var(--text); font-weight: 600; }
+    #log .empty { font-style: italic; }
+
+    .note {
+      font-size: 0.85rem;
+      color: var(--muted);
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+
+    button {
+      font: inherit;
+      font-size: 0.85rem;
+      padding: 6px 14px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      cursor: pointer;
+    }
+    button:hover { background: var(--bg); }
+
+    .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .row h2 { margin: 0; }
+
+    footer {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      padding: 16px;
+    }
+
+    /* =========================================================
+       3 bis. QUESTIONNAIRE
+       ========================================================= */
+    .quiz-intro { font-size: 0.9rem; color: var(--muted); margin-bottom: 14px; }
+    .progress { height: 8px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+    .progress .bar { height: 100%; width: 0; background: var(--ok); transition: width 0.3s; }
+    .progress-label { font-size: 0.8rem; color: var(--muted); margin: 6px 0 18px; }
+
+    .question {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 14px;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .question legend { font-weight: 600; padding: 0 4px; }
+    .question .meta { display: block; font-size: 0.75rem; color: var(--muted); font-weight: 500; margin-bottom: 4px; }
+    .question .prompt { display: block; font-size: 0.98rem; }
+    .options { display: grid; gap: 8px; margin-top: 12px; }
+    .options label {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .options label:hover { background: var(--bg); }
+    .options input { accent-color: var(--ok); width: 17px; height: 17px; }
+    .options label.chosen { border-color: #93c5fd; background: #eff6ff; }
+    .options label.good { border-color: var(--ok); background: var(--ok-soft); }
+    .options label.bad  { border-color: var(--warn); background: var(--warn-soft); }
+
+    .question.correct { border-color: var(--ok); }
+    .question.wrong   { border-color: var(--warn); }
+    .question.missing { border-color: var(--warn-border); background: #fff7ed; }
+    .explain {
+      margin-top: 10px; font-size: 0.85rem; color: var(--text);
+      background: var(--bg); border-radius: 8px; padding: 10px 12px;
+    }
+
+    .quiz-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+    button.primary { background: var(--ok); border-color: var(--ok); color: #fff; font-weight: 600; }
+    button.primary:hover { background: #15803d; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .quiz-result {
+      margin-top: 18px; padding: 18px; border-radius: 12px;
+      background: var(--ok-soft); border: 1px solid var(--ok);
+      text-align: center; animation: fadeIn 0.4s ease;
+    }
+    .quiz-result.low { background: var(--warn-soft); border-color: var(--warn); }
+    .quiz-result .score { font-size: 2rem; font-weight: 800; }
+    .quiz-result p { font-size: 0.9rem; margin-top: 4px; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    /* =========================================================
+       4. AVERTISSEMENT CENTRAL (overlay)
+       ========================================================= */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.45);
+      backdrop-filter: blur(3px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s ease, visibility 0.25s ease;
+    }
+    #overlay.show { opacity: 1; visibility: visible; }
+
+    #alertBox {
+      max-width: 520px;
+      width: 100%;
+      background: var(--warn-soft);
+      border: 3px solid var(--warn-border);
+      border-radius: var(--radius);
+      box-shadow: 0 20px 50px rgba(220, 38, 38, 0.25);
+      padding: 32px 26px;
+      text-align: center;
+      color: var(--warn);
+      font-size: 1.2rem;
+      font-weight: 700;
+      transform: scale(0.9) translateY(10px);
+      transition: transform 0.3s, background 0.3s, border-color 0.3s, color 0.3s;
+    }
+    #overlay.show #alertBox {
+      transform: scale(1) translateY(0);
+      animation: shake 0.45s ease 0.1s;
+    }
+    #alertBox .sub {
+      display: block;
+      margin-top: 10px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--muted);
+    }
+
+    /* Variante « retour » : l'encadré passe au vert avant de disparaître */
+    #alertBox.back {
+      background: var(--ok-soft);
+      border-color: var(--ok);
+      color: var(--ok);
+      animation: none;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-8px); }
+      40% { transform: translateX(8px); }
+      60% { transform: translateX(-5px); }
+      80% { transform: translateX(5px); }
+    }
+
+    /* Respect des préférences d'accessibilité */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+
+    @media (max-width: 520px) {
+      #status { font-size: 1.1rem; padding: 26px 14px; }
+      #alertBox { font-size: 1.05rem; padding: 24px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🖥️ Surveillance du focus de la fenêtre</h1>
+    <span id="indicator" class="indicator" role="status" aria-live="polite">
+      <span class="dot"></span><span id="indicatorText">Fenêtre active</span>
+    </span>
+  </header>
+
+  <main>
+    <!-- Message d'état principal -->
+    <section id="status" class="card" aria-live="polite">
+      ✅ Page active — Vous pouvez continuer.
+    </section>
+
+    <!-- =====================================================
+         QUESTIONNAIRE D'ANGLAIS (généré à partir des transcripts)
+         ===================================================== -->
+    <section class="card" id="quizCard">
+      <div class="quiz-head">
+        <h2>📝 Questionnaire d'anglais — révision de l'année</h2>
+        <p class="quiz-intro">
+          10 questions tirées des cours (octobre 2025 → octobre 2026). Choisissez une réponse par question,
+          puis cliquez sur <strong>Valider</strong>. Les pertes de focus pendant le questionnaire sont comptabilisées.
+        </p>
+        <div class="progress"><div class="bar" id="quizBar"></div></div>
+        <p class="progress-label" id="quizProgress">0 / 10 réponses</p>
+      </div>
+
+      <form id="quizForm" novalidate></form>
+
+      <div class="quiz-actions">
+        <button type="button" class="primary" id="quizSubmit">Valider mes réponses</button>
+        <button type="button" id="quizReset">Recommencer</button>
+      </div>
+
+      <div id="quizResult" class="quiz-result" hidden></div>
+    </section>
+
+    <!-- Statistiques de la session -->
+    <section class="card">
+      <h2>Statistiques de la session</h2>
+      <div class="stats">
+        <div class="stat"><div class="value" id="countAway">0</div><div class="label">Pertes de focus</div></div>
+        <div class="stat"><div class="value" id="totalAway">0 s</div><div class="label">Temps total hors page</div></div>
+        <div class="stat"><div class="value" id="lastAway">—</div><div class="label">Dernière absence</div></div>
+      </div>
+    </section>
+
+    <!-- Journal des événements -->
+    <section class="card">
+      <div class="row">
+        <h2>Journal des événements</h2>
+        <button type="button" id="clearLog">Effacer</button>
+      </div>
+      <ul id="log"><li class="empty">Aucun événement pour le moment.</li></ul>
+    </section>
+
+    <p class="note">
+      ℹ️ Cette page signale uniquement la <strong>perte de focus</strong> de la fenêtre ou sa
+      <strong>mise en arrière-plan</strong>. Elle ne détermine pas ce que fait l'utilisateur ni ses intentions.
+      Selon le navigateur, le système d'exploitation ou le contexte (multi-écrans, fenêtres flottantes,
+      mode plein écran, appareils mobiles), certaines situations peuvent ne pas être détectées.
+    </p>
+  </main>
+
+  <footer>HTML · CSS · JavaScript natifs — aucune dépendance</footer>
+
+  <!-- Avertissement central -->
+  <div id="overlay" aria-hidden="true">
+    <div id="alertBox" role="alert">
+      <span id="alertText">⚠️ ATTENTION ! Vous avez quitté la fenêtre active. Veuillez rester sur cette page.</span>
+      <span class="sub" id="alertSub">Revenez sur cette fenêtre pour continuer.</span>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    /* =========================================================
+       CONFIGURATION
+       ========================================================= */
+    const RETURN_MESSAGE_DELAY = 2000; // ms : durée d'affichage du message de retour
+
+    const MESSAGES = {
+      active:  '✅ Page active — Vous pouvez continuer.',
+      warning: '⚠️ ATTENTION ! Vous avez quitté la fenêtre active. Veuillez rester sur cette page.',
+      back:    '✅ Vous êtes de retour sur la page.'
+    };
+
+    /* =========================================================
+       RÉFÉRENCES DOM
+       ========================================================= */
+    const $ = (id) => document.getElementById(id);
+    const statusEl      = $('status');
+    const indicatorEl   = $('indicator');
+    const indicatorText = $('indicatorText');
+    const overlayEl     = $('overlay');
+    const alertBox      = $('alertBox');
+    const alertText     = $('alertText');
+    const alertSub      = $('alertSub');
+    const logEl         = $('log');
+
+    /* =========================================================
+       ÉTAT
+       Une seule variable « isAway » sert de verrou :
+       - on ne déclenche l'avertissement que si on était présent ;
+       - on ne déclenche le retour que si on était absent.
+       Ainsi, quand blur + visibilitychange se déclenchent ensemble
+       (cas fréquent lors d'un changement d'onglet), un seul
+       avertissement est généré.
+       ========================================================= */
+    let isAway = false;
+    let awaySince = 0;       // horodatage du début de l'absence
+    let awayCount = 0;       // nombre de pertes de focus
+    let totalAwayMs = 0;     // temps cumulé hors page
+    let returnTimer = null;  // minuteur du message de retour
+
+    /* =========================================================
+       UTILITAIRES
+       ========================================================= */
+    function formatDuration(ms) {
+      const s = Math.round(ms / 1000);
+      if (s < 60) return s + ' s';
+      const m = Math.floor(s / 60);
+      return m + ' min ' + (s % 60) + ' s';
+    }
+
+    function timeNow() {
+      return new Date().toLocaleTimeString('fr-FR');
+    }
+
+    function addLog(label, detail) {
+      const empty = logEl.querySelector('.empty');
+      if (empty) empty.remove();
+      const li = document.createElement('li');
+      li.innerHTML = '[' + timeNow() + '] <strong></strong> ';
+      li.querySelector('strong').textContent = label;
+      li.append(detail || '');
+      logEl.prepend(li); // le plus récent en haut
+    }
+
+    function updateStats(lastMs) {
+      $('countAway').textContent = awayCount;
+      $('totalAway').textContent = formatDuration(totalAwayMs);
+      if (lastMs !== undefined) $('lastAway').textContent = formatDuration(lastMs);
+    }
+
+    /* =========================================================
+       AFFICHAGE DES ÉTATS
+       ========================================================= */
+    function showActive() {
+      statusEl.textContent = MESSAGES.active;
+      statusEl.classList.remove('away');
+      indicatorEl.classList.remove('away');
+      indicatorText.textContent = 'Fenêtre active';
+      overlayEl.classList.remove('show');
+      overlayEl.setAttribute('aria-hidden', 'true');
+      document.title = 'Surveillance du focus de la fenêtre';
+    }
+
+    function showWarning() {
+      statusEl.textContent = MESSAGES.warning;
+      statusEl.classList.add('away');
+      indicatorEl.classList.add('away');
+      indicatorText.textContent = 'Fenêtre inactive';
+
+      alertBox.classList.remove('back');
+      alertText.textContent = MESSAGES.warning;
+      alertSub.textContent = 'Revenez sur cette fenêtre pour continuer.';
+
+      // Relance l'animation d'apparition à chaque nouvel avertissement
+      overlayEl.classList.remove('show');
+      void overlayEl.offsetWidth; // force le reflow
+      overlayEl.classList.add('show');
+      overlayEl.setAttribute('aria-hidden', 'false');
+
+      document.title = '⚠️ Revenez sur la page';
+    }
+
+    function showBack() {
+      statusEl.textContent = MESSAGES.back;
+      statusEl.classList.remove('away');
+      indicatorEl.classList.remove('away');
+      indicatorText.textContent = 'Fenêtre active';
+
+      alertBox.classList.add('back');
+      alertText.textContent = MESSAGES.back;
+      alertSub.textContent = 'Retour à l’interface normale…';
+      document.title = 'Surveillance du focus de la fenêtre';
+    }
+
+    /* =========================================================
+       LOGIQUE PRINCIPALE (avec anti-doublons)
+       ========================================================= */
+    function handleLeave(source) {
+      if (isAway) return;            // déjà signalé → on ignore le doublon
+      isAway = true;
+      awaySince = Date.now();
+      awayCount++;
+
+      clearTimeout(returnTimer);     // annule un éventuel retour en cours
+      returnTimer = null;
+
+      showWarning();
+      updateStats();
+      addLog('Perte de focus', '(' + source + ')');
+    }
+
+    function handleReturn(source) {
+      if (!isAway) return;           // déjà présent → on ignore le doublon
+      isAway = false;
+
+      const duration = Date.now() - awaySince;
+      totalAwayMs += duration;
+      updateStats(duration);
+      addLog('Retour sur la page', '(' + source + ', absence : ' + formatDuration(duration) + ')');
+
+      showBack();
+
+      // Après un court délai, on rétablit l'interface normale
+      clearTimeout(returnTimer);
+      returnTimer = setTimeout(() => {
+        if (!isAway) showActive();   // sécurité : ne pas masquer si l'utilisateur est reparti
+        returnTimer = null;
+      }, RETURN_MESSAGE_DELAY);
+    }
+
+    /* =========================================================
+       ÉCOUTEURS D'ÉVÉNEMENTS
+       ========================================================= */
+
+    // 1) La fenêtre perd le focus (autre application, autre fenêtre…)
+    window.addEventListener('blur', () => handleLeave('blur'));
+
+    // 2) La fenêtre récupère le focus
+    window.addEventListener('focus', () => handleReturn('focus'));
+
+    // 3) L'onglet devient invisible / visible (changement d'onglet, réduction…)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') {
+        handleLeave('visibilitychange : onglet masqué');
+      } else if (document.hasFocus()) {
+        // On ne considère le retour comme effectif que si la fenêtre a aussi le focus.
+        // Sinon, l'événement « focus » prendra le relais quand l'utilisateur cliquera.
+        handleReturn('visibilitychange : onglet visible');
+      }
+    });
+
+    // Bouton d'effacement du journal
+    $('clearLog').addEventListener('click', () => {
+      logEl.innerHTML = '<li class="empty">Aucun événement pour le moment.</li>';
+    });
+
+    /* =========================================================
+       QUESTIONNAIRE D'ANGLAIS
+       Questions rédigées à partir des transcripts des cours.
+       « answer » = index (0, 1, 2…) de la bonne option.
+       ========================================================= */
+    const QUESTIONS = [
+      {
+        lesson: '29/10/2025 — Articles a / an',
+        prompt: 'Complete: "She studies at ___ university in Kenitra."',
+        options: ['a', 'an', 'the', '— (no article)'],
+        answer: 0,
+        explain: 'On dit « a university » : le mot commence par le son /ju/ (consonne), même s\'il s\'écrit avec une voyelle. « An » s\'utilise devant un son voyelle : an orange.'
+      },
+      {
+        lesson: '12/11/2025 — Prepositions of time',
+        prompt: 'Which is correct?',
+        options: ['in night', 'on night', 'at night', 'at the night'],
+        answer: 2,
+        explain: 'Avec les prépositions de temps : « at night », mais « in the autumn » et « on Monday ».'
+      },
+      {
+        lesson: '17/12/2025 — Opposite adjectives',
+        prompt: 'What is the opposite of "heavy"?',
+        options: ['short', 'light', 'slow', 'quiet'],
+        answer: 1,
+        explain: 'Heavy ↔ light. Autres paires vues en cours : long ↔ short, slow ↔ fast, safe ↔ dangerous, quiet ↔ noisy.'
+      },
+      {
+        lesson: '04/03/2026 — Countable / uncountable (Money)',
+        prompt: 'Complete: "How ___ money does she earn?"',
+        options: ['many', 'much', 'a lot', 'few'],
+        answer: 1,
+        explain: '« Money » est indénombrable (on ne dit pas « two monies ») : on utilise « much ». « Many » s\'emploie avec les dénombrables : many meetings.'
+      },
+      {
+        lesson: '25/03/2026 — Past simple (irregular verbs)',
+        prompt: 'What is the past simple of "grow"?',
+        options: ['growed', 'grown', 'grew', 'growing'],
+        answer: 2,
+        explain: '« Grow » est irrégulier : grow → grew. Les verbes réguliers prennent -ed (launch → launched), d\'autres changent : give → gave, go → went.'
+      },
+      {
+        lesson: '20/05/2026 — Advertising',
+        prompt: 'A short song used in advertising is called a…',
+        options: ['logo', 'slogan', 'jingle', 'commercial'],
+        answer: 2,
+        explain: 'Un « jingle » est une courte chanson publicitaire. Le logo est l\'image de la marque, le slogan sa phrase (« Just do it »).'
+      },
+      {
+        lesson: '03/06/2026 — Comparatives',
+        prompt: 'Complete: "This chair is ___ than mine."',
+        options: ['comfortabler', 'more comfortable', 'most comfortable', 'the more comfortable'],
+        answer: 1,
+        explain: 'Adjectif long (plusieurs syllabes) → « more + adjectif + than ». Adjectif court → -er : larger than.'
+      },
+      {
+        lesson: '02/09/2026 — Future arrangements',
+        prompt: 'The date is already fixed in the diary. Which sentence is best?',
+        options: ['They close the deal next month.', 'They are closing the deal next month.', 'They closed the deal next month.', 'They have closed the deal next month.'],
+        answer: 1,
+        explain: 'Le présent continu exprime un arrangement futur déjà fixé. « Going to » exprime plutôt une intention.'
+      },
+      {
+        lesson: '14/10/2026 — Present perfect',
+        prompt: 'You still work there. Complete: "I ___ for this company since 2019."',
+        options: ['work', 'worked', 'have worked', 'am working since'],
+        answer: 2,
+        explain: 'Action commencée dans le passé et pas terminée → present perfect : have/has + participe passé. « I worked » signifierait que c\'est fini.'
+      },
+      {
+        lesson: '24/10/2026 — Job interviews (advice)',
+        prompt: 'Which sentence is grammatically correct?',
+        options: ['You should to ask questions.', 'You should asking questions.', 'You should ask questions.', 'You should asked questions.'],
+        answer: 2,
+        explain: 'Après « should », on met le verbe à la base verbale, sans « to » : you should ask.'
+      }
+    ];
+
+    const quizForm     = $('quizForm');
+    const quizResult   = $('quizResult');
+    const quizSubmit   = $('quizSubmit');
+    const quizBar      = $('quizBar');
+    const quizProgress = $('quizProgress');
+    let quizBaseline = { count: 0, ms: 0 }; // pertes de focus au début du questionnaire
+    let quizDone = false;
+
+    // Construit le formulaire à partir du tableau QUESTIONS
+    function renderQuiz() {
+      quizForm.innerHTML = '';
+      QUESTIONS.forEach((q, i) => {
+        const fs = document.createElement('fieldset');
+        fs.className = 'question';
+        fs.dataset.index = i;
+
+        const lg = document.createElement('legend');
+        lg.textContent = 'Question ' + (i + 1);
+        fs.appendChild(lg);
+
+        const meta = document.createElement('span');
+        meta.className = 'meta';
+        meta.textContent = 'Cours du ' + q.lesson;
+        fs.appendChild(meta);
+
+        const pr = document.createElement('span');
+        pr.className = 'prompt';
+        pr.textContent = q.prompt;
+        fs.appendChild(pr);
+
+        const opts = document.createElement('div');
+        opts.className = 'options';
+        q.options.forEach((opt, j) => {
+          const lab = document.createElement('label');
+          const inp = document.createElement('input');
+          inp.type = 'radio';
+          inp.name = 'q' + i;
+          inp.value = j;
+          lab.appendChild(inp);
+          lab.append(opt);
+          opts.appendChild(lab);
+        });
+        fs.appendChild(opts);
+        quizForm.appendChild(fs);
+      });
+      updateProgress();
+    }
+
+    // Barre de progression + mise en évidence de l'option choisie
+    function updateProgress() {
+      const answered = QUESTIONS.filter((_, i) => quizForm.querySelector('input[name="q' + i + '"]:checked')).length;
+      quizBar.style.width = (answered / QUESTIONS.length * 100) + '%';
+      quizProgress.textContent = answered + ' / ' + QUESTIONS.length + ' réponses';
+      quizForm.querySelectorAll('.options label').forEach((lab) => {
+        lab.classList.toggle('chosen', lab.querySelector('input').checked);
+      });
+    }
+
+    quizForm.addEventListener('change', (e) => {
+      const fs = e.target.closest('.question');
+      if (fs) fs.classList.remove('missing');
+      updateProgress();
+    });
+
+    // Correction
+    quizSubmit.addEventListener('click', () => {
+      if (quizDone) return;
+
+      // Vérifie que toutes les questions ont une réponse
+      let firstMissing = null;
+      QUESTIONS.forEach((_, i) => {
+        const fs = quizForm.children[i];
+        const checked = quizForm.querySelector('input[name="q' + i + '"]:checked');
+        fs.classList.toggle('missing', !checked);
+        if (!checked && !firstMissing) firstMissing = fs;
+      });
+      if (firstMissing) {
+        firstMissing.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
+      let score = 0;
+      QUESTIONS.forEach((q, i) => {
+        const fs = quizForm.children[i];
+        const chosen = Number(quizForm.querySelector('input[name="q' + i + '"]:checked').value);
+        const labels = fs.querySelectorAll('.options label');
+        const ok = chosen === q.answer;
+        if (ok) score++;
+
+        fs.classList.add(ok ? 'correct' : 'wrong');
+        labels[q.answer].classList.add('good');
+        if (!ok) labels[chosen].classList.add('bad');
+        fs.querySelectorAll('input').forEach((inp) => { inp.disabled = true; });
+
+        const ex = document.createElement('div');
+        ex.className = 'explain';
+        ex.textContent = (ok ? '✅ Correct. ' : '❌ Bonne réponse : « ' + q.options[q.answer] + ' ». ') + q.explain;
+        fs.appendChild(ex);
+      });
+
+      // Pertes de focus pendant le questionnaire (une absence en cours compte aussi)
+      const lossCount = awayCount - quizBaseline.count;
+      const lossMs = totalAwayMs - quizBaseline.ms;
+
+      quizDone = true;
+      quizSubmit.disabled = true;
+      quizResult.hidden = false;
+      quizResult.classList.toggle('low', score < QUESTIONS.length / 2);
+      quizResult.innerHTML = '';
+      const sc = document.createElement('div');
+      sc.className = 'score';
+      sc.textContent = score + ' / ' + QUESTIONS.length;
+      const p1 = document.createElement('p');
+      p1.textContent = score === QUESTIONS.length ? 'Excellent, sans faute !'
+        : score >= 7 ? 'Très bien, quelques points à revoir.'
+        : score >= 5 ? 'Correct, révisez les explications ci-dessus.'
+        : 'À retravailler : relisez les explications de chaque question.';
+      const p2 = document.createElement('p');
+      p2.textContent = 'Pertes de focus pendant le questionnaire : ' + lossCount +
+        ' (temps hors page : ' + formatDuration(lossMs) + ').';
+      quizResult.append(sc, p1, p2);
+      quizResult.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+      addLog('Questionnaire validé', '(score ' + score + '/' + QUESTIONS.length + ', ' + lossCount + ' perte(s) de focus)');
+    });
+
+    // Recommencer
+    $('quizReset').addEventListener('click', () => {
+      quizDone = false;
+      quizSubmit.disabled = false;
+      quizResult.hidden = true;
+      quizBaseline = { count: awayCount, ms: totalAwayMs };
+      renderQuiz();
+      $('quizCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      addLog('Questionnaire réinitialisé', '');
+    });
+
+    renderQuiz();
+
+    /* =========================================================
+       ÉTAT INITIAL
+       Si la page est ouverte en arrière-plan (ex. ouverture
+       dans un nouvel onglet sans y basculer), on le signale.
+       ========================================================= */
+    showActive();
+    addLog('Page ouverte', '');
+    if (document.visibilityState === 'hidden' || !document.hasFocus()) {
+      handleLeave('page ouverte sans focus');
+    }
+  </script>
+</body>
+</html>
