@@ -104,7 +104,7 @@
     <label>Code</label>
     <input class="code" id="codeWatch" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ex : anouar12">
     <button class="primary" id="watchBtn">🔗 Se connecter</button>
-    <p class="hint" id="watchHint">Les deux téléphones doivent être sur le même Wi-Fi.</p>
+    <p class="hint" id="watchStatus">Les deux téléphones doivent être sur le même Wi-Fi.</p>
   </section>
 
   <!-- ===================== LECTEUR (reçu) ===================== -->
@@ -224,14 +224,17 @@ $('startShareBtn').onclick=()=>{
     else if(err.type==='peer-unavailable'){ /* personne encore : normal */ }
     else { toast('Erreur de connexion ('+err.type+').'); }
   });
-  // Un téléphone « regarde » : il nous appelle, on répond avec notre flux.
-  peer.on('call',(incoming)=>{
-    call=incoming;
-    call.answer(localStream);
-    $('selfView').srcObject=localStream;
-    $('sendKind').textContent=shareKind==='screen'?'écran':'caméra';
-    $('sendCode').textContent=code;
-    show('sending'); setState('Diffusion','live');
+  // Le récepteur ouvre d'abord un canal de données ; dès qu'il est là, c'est
+  // NOUS (le diffuseur) qui l'appelons en lui envoyant la vidéo. Méthode fiable.
+  peer.on('connection',(conn)=>{
+    conn.on('open',()=>{
+      call=peer.call(conn.peer, localStream);
+      $('selfView').srcObject=localStream;
+      $('sendKind').textContent=shareKind==='screen'?'écran':'caméra';
+      $('sendCode').textContent=code;
+      show('sending'); setState('Diffusion','live');
+      if(call) call.on('error',()=> toast('Problème d\'envoi de la vidéo.'));
+    });
   });
 };
 $('copyCode').onclick=async()=>{ try{ await navigator.clipboard.writeText($('waitCode').textContent); toast('Code copié'); }catch(e){ toast('Copie impossible.'); } };
@@ -242,20 +245,28 @@ $('watchBtn').onclick=()=>{
   const code=cleanCode($('codeWatch').value);
   if(code.length<3) return toast('Tape le code reçu (au moins 3 caractères).');
   cleanup();
-  setState('Connexion…','wait'); toast('Connexion en cours…');
+  const st=(m)=>{ $('watchStatus').textContent=m; };
+  setState('Connexion…','wait'); st('Connexion au service de rendez-vous…');
   peer=new Peer(PEER_OPTS);
   peer.on('open',()=>{
-    try{ call=peer.call(PREFIX+code, new MediaStream()); }  // flux vide : on veut seulement recevoir
-    catch(e){ return toast('Connexion impossible.'); }
-    if(!call){ return toast('Code introuvable.'); }
+    st('Recherche du téléphone qui diffuse (code : '+code+')…');
+    // On ouvre un canal de données : le diffuseur nous appellera avec sa vidéo.
+    const conn=peer.connect(PREFIX+code);
+    conn.on('open',()=> st('Téléphone trouvé. En attente de la vidéo…'));
+    conn.on('error',()=> st('Erreur du canal de données.'));
     armWatch();
+  });
+  // Le diffuseur nous appelle : on répond en mode réception seule.
+  peer.on('call',(incoming)=>{
+    call=incoming;
+    call.answer();   // pas de flux à envoyer : on reçoit seulement
     call.on('stream',(s)=>{ remoteStream=s; $('video').srcObject=s; clearTimeout(watchdog); show('player'); setState('Réception','live'); });
     call.on('close',()=>{ toast('Diffusion terminée.'); });
     call.on('error',()=> failWifi());
   });
   peer.on('error',(err)=>{
-    if(err.type==='peer-unavailable'){ toast('Aucune diffusion avec ce code. Vérifie le code et que l\'autre téléphone diffuse.'); setState('Prêt'); }
-    else { toast('Erreur ('+err.type+').'); setState('Prêt'); }
+    if(err.type==='peer-unavailable'){ st('Aucune diffusion avec ce code. Vérifie le code et que l\'autre téléphone diffuse bien.'); setState('Prêt'); }
+    else { st('Erreur : '+err.type); setState('Prêt'); }
   });
 };
 
