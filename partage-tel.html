@@ -166,7 +166,12 @@ function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('show');
 
 /* Préfixe pour que nos codes ne se mélangent pas avec d'autres applis PeerJS. */
 const PREFIX='partecr-';
-const PEER_OPTS={ config:{ iceServers:[] } };   // iceServers vide = Wi-Fi local uniquement
+// STUN : aide les deux téléphones à établir la connexion. Sans TURN, la vidéo
+// passe en pratique sur le réseau local ; privilégie le même Wi-Fi.
+const PEER_OPTS={ config:{ iceServers:[
+  {urls:'stun:stun.l.google.com:19302'},
+  {urls:'stun:stun1.l.google.com:19302'}
+] } };
 function cleanCode(v){ return (v||'').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,20); }
 
 let peer=null, call=null, localStream=null, remoteStream=null, shareKind='screen', watchdog=null;
