@@ -62,7 +62,7 @@
   <!-- ===================== ACCUEIL ===================== -->
   <section class="screen card" id="home">
     <h2>Que veux-tu faire ?</h2>
-    <p class="muted">Les deux téléphones doivent être sur le même Wi-Fi. Chacun peut diffuser ou regarder : le partage fonctionne dans les deux sens.</p>
+    <p class="muted">⚠️ Les deux téléphones doivent être sur le <b>même réseau Wi-Fi</b> : la connexion ne fonctionne que dans ce cas. Chacun peut diffuser ou regarder, dans les deux sens.</p>
     <button class="primary" id="goShare">📤 Diffuser (mon écran ou ma caméra)</button>
     <button id="goWatch">📥 Regarder (l'autre téléphone)</button>
     <p class="hint">Astuce : garde cette page ouverte sur les deux téléphones et choisis un rôle sur chacun.</p>
@@ -157,9 +157,11 @@ function setState(txt,cls){ const e=$('state'); e.textContent=txt; e.className='
 let toastTimer;
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2200); }
 
-/* --- Config WebRTC. STUN public seulement pour aider la négociation ; en
-   Wi-Fi local la connexion reste directe entre les deux téléphones. --- */
-const RTC_CONF = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+/* --- Config WebRTC. Aucun serveur STUN : on ne garde que les adresses du
+   réseau local. La connexion ne peut donc réussir QUE si les deux téléphones
+   sont sur le même Wi-Fi ; sur des réseaux différents, elle échoue. --- */
+const RTC_CONF = { iceServers:[] };
+let connectWatch = null;   // minuteur qui alerte si la connexion n'aboutit pas
 
 let pc = null;             // RTCPeerConnection courante
 let localStream = null;    // flux diffusé (écran ou caméra)
@@ -182,8 +184,9 @@ function newPC(){
   const c = new RTCPeerConnection(RTC_CONF);
   c.onconnectionstatechange=()=>{
     const st=c.connectionState;
-    if(st==='connected'){ setState('Connecté','live'); }
-    else if(st==='disconnected'||st==='failed'){ setState('Déconnecté'); toast('Connexion perdue'); }
+    if(st==='connected'){ setState('Connecté','live'); clearTimeout(connectWatch); connectWatch=null; }
+    else if(st==='failed'){ setState('Échec'); clearTimeout(connectWatch); failWifi(); }
+    else if(st==='disconnected'){ setState('Déconnecté'); toast('Connexion perdue'); }
   };
   return c;
 }
@@ -193,7 +196,19 @@ $('goShare').onclick = ()=>{ show('share'); $('sharePick').hidden=false; $('shar
 $('goWatch').onclick = ()=> show('watch');
 document.querySelectorAll('[data-home]').forEach(b=> b.onclick=()=>{ cleanup(); show('home'); setState('Prêt'); });
 
+/* Message affiché quand la connexion n'aboutit pas : presque toujours parce
+   que les deux téléphones ne sont pas sur le même Wi-Fi. */
+function failWifi(){
+  toast('Connexion impossible. Mets les deux téléphones sur le même Wi-Fi.');
+}
+/* Démarre un minuteur : si la connexion n'est pas établie à temps, on prévient. */
+function armWatch(){
+  clearTimeout(connectWatch);
+  connectWatch=setTimeout(()=>{ if(!pc||pc.connectionState!=='connected') failWifi(); }, 18000);
+}
+
 function cleanup(){
+  clearTimeout(connectWatch); connectWatch=null;
   try{ if(localStream) localStream.getTracks().forEach(t=>t.stop()); }catch(e){}
   try{ if(pc) pc.close(); }catch(e){}
   pc=null; localStream=null; stopRec();
@@ -234,6 +249,7 @@ $('connectShare').onclick = async ()=>{
   if(!code) return toast('Colle d\'abord le code de réponse.');
   try{
     await pc.setRemoteDescription(dec(code));
+    armWatch();
     $('shStep').textContent='Étape 3/3 — Connexion établie';
     // Aperçu local de ce qu'on diffuse
     $('selfView').srcObject = localStream;
@@ -262,6 +278,7 @@ $('makeAnswer').onclick = async ()=>{
     $('answerOut').value = enc(pc.localDescription);
     $('answerBlock').hidden=false;
     setState('En attente…','wait');
+    armWatch();
   }catch(e){ toast('Code reçu invalide.'); }
 };
 
