@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Partage écran — Téléphone à téléphone</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --card2:#273449; --text:#f1f5f9; --muted:#94a3b8;
+    --border:#334155; --blue:#2563eb; --blue2:#1d4ed8; --ok:#16a34a; --warn:#dc2626;
+    --amber:#f59e0b; --radius:14px; --font:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.5;
+    -webkit-user-select:none;user-select:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+  header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px}
+  header h1{font-size:1rem;font-weight:650}
+  .state{font-size:.75rem;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--card2);color:var(--muted);white-space:nowrap}
+  .state.live{background:rgba(22,163,74,.2);color:#4ade80}
+  .state.wait{background:rgba(245,158,11,.2);color:#fbbf24}
+  main{max-width:640px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px}
+  .screen[hidden]{display:none}
+  h2{font-size:1.05rem;margin-bottom:6px}
+  p.muted{color:var(--muted);font-size:.88rem;margin-bottom:12px}
+  button{font:inherit;font-weight:600;font-size:.95rem;padding:12px 16px;border-radius:11px;border:1px solid var(--border);
+    background:var(--card2);color:var(--text);cursor:pointer;width:100%;margin-bottom:10px}
+  button:active{transform:scale(.99)}
+  button.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+  button.primary:active{background:var(--blue2)}
+  button.half{width:calc(50% - 5px)}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  button:disabled{opacity:.45}
+  textarea{width:100%;min-height:90px;font-family:ui-monospace,monospace;font-size:.72rem;padding:10px;border-radius:10px;
+    border:1px solid var(--border);background:#0b1220;color:var(--text);resize:vertical;-webkit-user-select:text;user-select:text}
+  label{display:block;font-size:.82rem;color:var(--muted);margin:10px 0 5px}
+  .step{font-size:.8rem;color:var(--amber);font-weight:600;margin-bottom:8px}
+  .hint{font-size:.78rem;color:var(--muted);margin-top:6px}
+  /* Lecteur vidéo */
+  .stage{position:relative;background:#000;border-radius:12px;overflow:hidden;margin-bottom:10px;touch-action:none}
+  video{width:100%;display:block;background:#000}
+  #zoneRect{position:absolute;border:2px solid var(--amber);background:rgba(245,158,11,.12);display:none;pointer-events:none}
+  .pill{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);color:#fff;font-size:.72rem;padding:3px 9px;border-radius:999px}
+  .rec{position:absolute;top:8px;right:8px;background:rgba(220,38,38,.9);color:#fff;font-size:.72rem;padding:3px 9px;border-radius:999px;display:none;align-items:center;gap:5px}
+  .rec .dot{width:8px;height:8px;border-radius:50%;background:#fff;animation:blink 1s infinite}
+  @keyframes blink{50%{opacity:.25}}
+  .tools{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .tools button{margin:0}
+  .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#000a;color:#fff;padding:9px 16px;border-radius:999px;font-size:.82rem;opacity:0;transition:opacity .25s;pointer-events:none;z-index:50}
+  .toast.show{opacity:1}
+  .back{background:transparent;border:none;color:var(--muted);width:auto;padding:4px 0;margin-bottom:8px;font-size:.85rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>📡 Partage d'écran — tél. à tél.</h1>
+  <span class="state" id="state">Prêt</span>
+</header>
+
+<main>
+  <!-- ===================== ACCUEIL ===================== -->
+  <section class="screen card" id="home">
+    <h2>Que veux-tu faire ?</h2>
+    <p class="muted">Les deux téléphones doivent être sur le même Wi-Fi. Chacun peut diffuser ou regarder : le partage fonctionne dans les deux sens.</p>
+    <button class="primary" id="goShare">📤 Diffuser (mon écran ou ma caméra)</button>
+    <button id="goWatch">📥 Regarder (l'autre téléphone)</button>
+    <p class="hint">Astuce : garde cette page ouverte sur les deux téléphones et choisis un rôle sur chacun.</p>
+  </section>
+
+  <!-- ===================== DIFFUSER ===================== -->
+  <section class="screen card" id="share" hidden>
+    <button class="back" data-home>← Retour</button>
+    <h2>Diffuser</h2>
+
+    <div id="sharePick">
+      <p class="muted">Que veux-tu diffuser ?</p>
+      <button class="primary" id="shScreen">🖥️ Tout l'écran <span class="hint" style="display:block;font-weight:400">(Android/Chrome)</span></button>
+      <button id="shCam">📷 La caméra</button>
+    </div>
+
+    <div id="shareFlow" hidden>
+      <div class="step" id="shStep">Étape 1/3 — Génération du code…</div>
+
+      <label>1) Ton code à envoyer au téléphone qui regarde</label>
+      <textarea id="offerOut" readonly></textarea>
+      <button class="half" id="copyOffer">📋 Copier</button>
+      <button class="half" id="shareOffer">🔗 Partager</button>
+
+      <label>2) Colle ici le code de réponse reçu en retour</label>
+      <textarea id="answerIn" placeholder="Code de réponse du téléphone qui regarde…"></textarea>
+      <button class="primary" id="connectShare">✅ Connecter</button>
+    </div>
+  </section>
+
+  <!-- ===================== REGARDER ===================== -->
+  <section class="screen card" id="watch" hidden>
+    <button class="back" data-home>← Retour</button>
+    <h2>Regarder</h2>
+    <div class="step">Étape 1/2 — Colle le code reçu du téléphone qui diffuse</div>
+    <label>1) Code reçu</label>
+    <textarea id="offerIn" placeholder="Code du téléphone qui diffuse…"></textarea>
+    <button class="primary" id="makeAnswer">Générer ma réponse</button>
+
+    <div id="answerBlock" hidden>
+      <label>2) Renvoie ce code de réponse au téléphone qui diffuse</label>
+      <textarea id="answerOut" readonly></textarea>
+      <button class="half" id="copyAnswer">📋 Copier</button>
+      <button class="half" id="shareAnswer">🔗 Partager</button>
+      <p class="hint">La vidéo apparaît dès que l'autre téléphone a collé ce code.</p>
+    </div>
+  </section>
+
+  <!-- ===================== LECTEUR (reçu) ===================== -->
+  <section class="screen card" id="player" hidden>
+    <button class="back" data-home>← Fermer</button>
+    <div class="stage" id="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <span class="pill" id="pill">En direct</span>
+      <span class="rec" id="recBadge"><span class="dot"></span>REC <span id="recTime">0:00</span></span>
+      <div id="zoneRect"></div>
+    </div>
+    <div class="tools">
+      <button id="btnPhoto">📷 Photo</button>
+      <button id="btnVideo">⏺️ Vidéo</button>
+      <button id="btnZone">✂️ Zone</button>
+      <button id="btnFull">⛶ Plein écran</button>
+    </div>
+    <p class="hint" id="playerHint">Photo et vidéo sont enregistrées dans les téléchargements de ce téléphone.</p>
+  </section>
+
+  <!-- ===================== APERÇU DIFFUSEUR ===================== -->
+  <section class="screen card" id="sending" hidden>
+    <h2>✅ Diffusion en cours</h2>
+    <p class="muted">Ton <span id="sendKind">écran</span> est partagé avec l'autre téléphone.</p>
+    <div class="stage"><video id="selfView" autoplay playsinline muted></video></div>
+    <button class="primary" id="stopShare">⏹️ Arrêter la diffusion</button>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* =========================================================================
+   Partage d'écran téléphone-à-téléphone — WebRTC, sans serveur.
+   Signalisation manuelle : on échange une fois un "code" (offre puis réponse)
+   entre les deux téléphones (copier/coller ou bouton Partager).
+   Aucune donnée ne transite par un serveur : la vidéo va directement
+   d'un téléphone à l'autre sur le Wi-Fi local.
+   ========================================================================= */
+
+const $ = (id) => document.getElementById(id);
+const screens = ['home','share','watch','player','sending'];
+function show(id){ screens.forEach(s=>$(s).hidden = (s!==id)); }
+function setState(txt,cls){ const e=$('state'); e.textContent=txt; e.className='state'+(cls?' '+cls:''); }
+let toastTimer;
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2200); }
+
+/* --- Config WebRTC. STUN public seulement pour aider la négociation ; en
+   Wi-Fi local la connexion reste directe entre les deux téléphones. --- */
+const RTC_CONF = { iceServers:[{urls:'stun:stun.l.google.com:19302'}] };
+
+let pc = null;             // RTCPeerConnection courante
+let localStream = null;    // flux diffusé (écran ou caméra)
+let shareKind = 'screen';
+
+/* Attend que la collecte ICE soit finie puis renvoie le SDP complet,
+   compacté en base64 pour un code plus court à échanger. */
+function waitIce(pc){
+  return new Promise((res)=>{
+    if(pc.iceGatheringState==='complete') return res();
+    const check=()=>{ if(pc.iceGatheringState==='complete'){ pc.removeEventListener('icegatheringstatechange',check); res(); } };
+    pc.addEventListener('icegatheringstatechange',check);
+    setTimeout(res,2500); // filet de sécurité
+  });
+}
+const enc = (obj)=> btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+const dec = (str)=> JSON.parse(decodeURIComponent(escape(atob(str.trim()))));
+
+function newPC(){
+  const c = new RTCPeerConnection(RTC_CONF);
+  c.onconnectionstatechange=()=>{
+    const st=c.connectionState;
+    if(st==='connected'){ setState('Connecté','live'); }
+    else if(st==='disconnected'||st==='failed'){ setState('Déconnecté'); toast('Connexion perdue'); }
+  };
+  return c;
+}
+
+/* ======================= NAVIGATION ======================= */
+$('goShare').onclick = ()=>{ show('share'); $('sharePick').hidden=false; $('shareFlow').hidden=true; };
+$('goWatch').onclick = ()=> show('watch');
+document.querySelectorAll('[data-home]').forEach(b=> b.onclick=()=>{ cleanup(); show('home'); setState('Prêt'); });
+
+function cleanup(){
+  try{ if(localStream) localStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  try{ if(pc) pc.close(); }catch(e){}
+  pc=null; localStream=null; stopRec();
+}
+
+/* ======================= DIFFUSER ======================= */
+async function startShare(kind){
+  shareKind=kind;
+  try{
+    if(kind==='screen'){
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getDisplayMedia)
+        return toast("Le partage d'écran n'est pas possible sur ce téléphone. Essaie la caméra.");
+      localStream = await navigator.mediaDevices.getDisplayMedia({video:{frameRate:15},audio:false});
+    }else{
+      localStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+    }
+  }catch(e){ return toast("Accès refusé ou indisponible."); }
+
+  $('sharePick').hidden=true; $('shareFlow').hidden=false;
+  $('shStep').textContent='Étape 1/3 — Envoie ton code au téléphone qui regarde';
+  setState('En attente…','wait');
+
+  pc = newPC();
+  localStream.getTracks().forEach(t=> pc.addTrack(t, localStream));
+  // Si l'utilisateur arrête le partage depuis la barre système
+  localStream.getVideoTracks()[0].addEventListener('ended', ()=>{ toast('Diffusion arrêtée'); cleanup(); show('home'); setState('Prêt'); });
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitIce(pc);
+  $('offerOut').value = enc(pc.localDescription);
+}
+$('shScreen').onclick = ()=> startShare('screen');
+$('shCam').onclick     = ()=> startShare('camera');
+
+$('connectShare').onclick = async ()=>{
+  const code=$('answerIn').value.trim();
+  if(!code) return toast('Colle d\'abord le code de réponse.');
+  try{
+    await pc.setRemoteDescription(dec(code));
+    $('shStep').textContent='Étape 3/3 — Connexion établie';
+    // Aperçu local de ce qu'on diffuse
+    $('selfView').srcObject = localStream;
+    $('sendKind').textContent = shareKind==='screen'?'écran':'caméra';
+    show('sending'); setState('Diffusion','live');
+  }catch(e){ toast('Code de réponse invalide.'); }
+};
+$('stopShare').onclick = ()=>{ cleanup(); show('home'); setState('Prêt'); };
+
+/* ======================= REGARDER ======================= */
+$('makeAnswer').onclick = async ()=>{
+  const code=$('offerIn').value.trim();
+  if(!code) return toast('Colle d\'abord le code reçu.');
+  cleanup();
+  pc = newPC();
+  pc.ontrack = (ev)=>{
+    $('video').srcObject = ev.streams[0];
+    remoteStream = ev.streams[0];
+    show('player'); setState('Réception','live');
+  };
+  try{
+    await pc.setRemoteDescription(dec(code));
+    const ans = await pc.createAnswer();
+    await pc.setLocalDescription(ans);
+    await waitIce(pc);
+    $('answerOut').value = enc(pc.localDescription);
+    $('answerBlock').hidden=false;
+    setState('En attente…','wait');
+  }catch(e){ toast('Code reçu invalide.'); }
+};
+
+/* ======================= COPIER / PARTAGER ======================= */
+async function copyText(txt){
+  try{ await navigator.clipboard.writeText(txt); toast('Code copié'); }
+  catch(e){ toast('Copie impossible — sélectionne et copie à la main.'); }
+}
+async function shareText(txt){
+  if(navigator.share){ try{ await navigator.share({text:txt}); }catch(e){} }
+  else copyText(txt);
+}
+$('copyOffer').onclick  = ()=> copyText($('offerOut').value);
+$('shareOffer').onclick = ()=> shareText($('offerOut').value);
+$('copyAnswer').onclick = ()=> copyText($('answerOut').value);
+$('shareAnswer').onclick= ()=> shareText($('answerOut').value);
+
+/* ======================= LECTEUR : photo / vidéo / zone ======================= */
+let remoteStream=null;
+let zone=null;            // {x,y,w,h} en fraction de la vidéo (0..1) ou null = tout
+let recorder=null, recChunks=[], recTimer=null, recStart=0, recCanvas=null, recRAF=null;
+
+/* ---- Dessin de la zone au doigt ---- */
+(function zonePicker(){
+  const stage=$('stage'), rectEl=$('zoneRect');
+  let picking=false, sx=0, sy=0;
+  $('btnZone').onclick=()=>{
+    if(zone){ zone=null; rectEl.style.display='none'; $('btnZone').textContent='✂️ Zone'; toast('Zone : tout l\'écran'); return; }
+    picking='arm'; toast('Dessine un rectangle sur l\'aperçu');
+  };
+  const pos=(e)=>{ const r=stage.getBoundingClientRect(); const t=e.touches?e.touches[0]:e; return {x:(t.clientX-r.left)/r.width, y:(t.clientY-r.top)/r.height, r}; };
+  stage.addEventListener('pointerdown',(e)=>{ if(picking!=='arm')return; const p=pos(e); sx=p.x; sy=p.y; picking=true; rectEl.style.display='block'; drawRect(sx,sy,0,0); });
+  stage.addEventListener('pointermove',(e)=>{ if(picking!==true)return; const p=pos(e); drawRect(Math.min(sx,p.x),Math.min(sy,p.y),Math.abs(p.x-sx),Math.abs(p.y-sy)); });
+  stage.addEventListener('pointerup',(e)=>{ if(picking!==true)return; picking=false;
+    const r=stage.getBoundingClientRect();
+    const w=parseFloat(rectEl.style.width)/r.width, h=parseFloat(rectEl.style.height)/r.height;
+    const x=parseFloat(rectEl.style.left)/r.width, y=parseFloat(rectEl.style.top)/r.height;
+    if(w<0.03||h<0.03){ zone=null; rectEl.style.display='none'; $('btnZone').textContent='✂️ Zone'; return; }
+    zone={x,y,w,h}; $('btnZone').textContent='✂️ Zone ✓'; toast('Zone sélectionnée');
+  });
+  function drawRect(x,y,w,h){ const r=stage.getBoundingClientRect(); rectEl.style.left=(x*r.width)+'px'; rectEl.style.top=(y*r.height)+'px'; rectEl.style.width=(w*r.width)+'px'; rectEl.style.height=(h*r.height)+'px'; }
+})();
+
+/* ---- Découpe la vidéo (zone ou plein) vers un canvas ---- */
+function frameToCanvas(cv){
+  const v=$('video'); const vw=v.videoWidth, vh=v.videoHeight; if(!vw) return false;
+  let sx=0,sy=0,sw=vw,sh=vh;
+  if(zone){ sx=zone.x*vw; sy=zone.y*vh; sw=zone.w*vw; sh=zone.h*vh; }
+  cv.width=Math.round(sw); cv.height=Math.round(sh);
+  cv.getContext('2d').drawImage(v,sx,sy,sw,sh,0,0,cv.width,cv.height);
+  return true;
+}
+function stamp(){ const d=new Date(); const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); }
+function download(blob,name){ const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000); }
+
+$('btnPhoto').onclick=()=>{
+  const cv=document.createElement('canvas');
+  if(!frameToCanvas(cv)) return toast('Pas encore d\'image.');
+  cv.toBlob(b=>{ download(b,'photo_'+stamp()+'.png'); toast('📷 Photo enregistrée'); },'image/png');
+};
+
+$('btnVideo').onclick=()=> recorder? stopRec() : startRec();
+function startRec(){
+  if(!remoteStream) return toast('Pas de flux à enregistrer.');
+  let stream;
+  if(zone){
+    // Enregistre uniquement la zone via un canvas animé
+    recCanvas=document.createElement('canvas');
+    const loop=()=>{ frameToCanvas(recCanvas); recRAF=requestAnimationFrame(loop); }; loop();
+    stream=recCanvas.captureStream(15);
+  }else{
+    stream=remoteStream;
+  }
+  const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')?'video/webm;codecs=vp9'
+             : MediaRecorder.isTypeSupported('video/webm;codecs=vp8')?'video/webm;codecs=vp8':'video/webm';
+  try{ recorder=new MediaRecorder(stream,{mimeType:mime}); }catch(e){ return toast('Enregistrement non supporté.'); }
+  recChunks=[];
+  recorder.ondataavailable=e=>{ if(e.data.size) recChunks.push(e.data); };
+  recorder.onstop=()=>{ download(new Blob(recChunks,{type:'video/webm'}),'video_'+stamp()+'.webm'); toast('🎬 Vidéo enregistrée'); };
+  recorder.start();
+  recStart=Date.now(); $('recBadge').style.display='flex'; $('btnVideo').textContent='⏹️ Arrêter';
+  recTimer=setInterval(()=>{ const s=Math.floor((Date.now()-recStart)/1000); $('recTime').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); },500);
+}
+function stopRec(){
+  if(recorder&&recorder.state!=='inactive'){ try{recorder.stop();}catch(e){} }
+  recorder=null; if(recRAF)cancelAnimationFrame(recRAF); recRAF=null;
+  clearInterval(recTimer); $('recBadge').style.display='none'; $('btnVideo').textContent='⏺️ Vidéo';
+}
+
+$('btnFull').onclick=()=>{ const s=$('stage'); if(!document.fullscreenElement){ (s.requestFullscreen||s.webkitRequestFullscreen).call(s); } else document.exitFullscreen(); };
+
+/* Évite de perdre le flux si l'écran se verrouille brièvement */
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && remoteStream) $('video').play().catch(()=>{}); });
+</script>
+</body>
+</html>
